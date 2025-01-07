@@ -1,0 +1,121 @@
+# Importing Libraries
+import logging
+import os
+import traceback
+import re
+from google.cloud import bigquery
+from google.cloud import storage
+import yaml
+
+# Load the schema configuration from a YAML file
+with open("./schemas.yaml") as schema_file:
+    config = yaml.safe_load(schema_file)
+
+# Constants for project ID and dataset
+PROJECT_ID = os.getenv('strkfarm')  # Fetch project ID from environment variables
+BQ_DATASET = 'staging'  # Name of the BigQuery dataset
+CS = storage.Client()  # Initialize Google Cloud Storage client
+BQ = bigquery.Client()  # Initialize BigQuery client
+job_config = bigquery.LoadJobConfig()  # Create a reusable BigQuery job configuration
+
+def streaming(data):
+    """
+    Main function to process incoming data files.
+
+    Args:
+        data (dict): A dictionary containing metadata about the uploaded file,
+                     including bucket name, file name, and creation time.
+
+    This function identifies the correct schema for the incoming file and
+    loads it into the corresponding BigQuery table.
+    """
+    bucketname = data['bucket']
+    filename = data['name']
+    timeCreated = data['timeCreated']
+
+    print("Bucket name:", bucketname)
+    print("File name:", filename)
+    print("Time Created:", timeCreated)
+
+    try:
+        # Iterate over tables defined in the schema configuration
+        for table in config:
+            tableName = table.get('name')
+            # Match file name to table name or a variant of it
+            if re.search(tableName.replace('_', '-'), filename) or re.search(tableName, filename):
+                tableSchema = table.get('schema')
+                _check_if_table_exists(tableName, tableSchema)  # Ensure table exists
+                tableFormat = table.get('format')
+
+                # If the table format matches, load data from the file
+                if tableFormat == 'NEWLINE_DELIMITED_JSON':
+                    _load_table_from_uri(data['bucket'], data['name'], tableSchema, tableName)
+    except Exception as e:
+        # Print the error traceback for debugging
+        print('Error streaming file. Cause:', traceback.format_exc())
+
+def _check_if_table_exists(tableName, tableSchema):
+    """
+    Checks if a BigQuery table exists, and creates it if it does not.
+
+    Args:
+        tableName (str): The name of the BigQuery table.
+        tableSchema (list): The schema for the table, defined in the YAML configuration.
+    """
+    table_id = BQ.dataset(BQ_DATASET).table(tableName)
+    try:
+        # Try to retrieve the table metadata
+        BQ.get_table(table_id)
+    except Exception:
+        # If table does not exist, create it
+        logging.warning('Creating table: %s', tableName)
+        schema = create_schema_from_yaml(tableSchema)
+        table = bigquery.Table(table_id, schema=schema)
+        table = BQ.create_table(table)
+        print("Created table {}.{}.{}".format(table.project, table.dataset_id, table.table_id))
+
+def _load_table_from_uri(bucket_name, file_name, tableSchema, tableName):
+    """
+    Loads data from a Cloud Storage file into a BigQuery table.
+
+    Args:
+        bucket_name (str): Name of the GCS bucket containing the file.
+        file_name (str): Name of the file to be loaded.
+        tableSchema (list): Schema of the target BigQuery table.
+        tableName (str): Name of the BigQuery table.
+    """
+    uri = f'gs://{bucket_name}/{file_name}'  # GCS URI for the file
+    table_id = BQ.dataset(BQ_DATASET).table(tableName)
+
+    # Convert the schema from YAML into BigQuery schema format
+    schema = create_schema_from_yaml(tableSchema)
+    job_config.schema = schema
+    job_config.source_format = bigquery.SourceFormat.NEWLINE_DELIMITED_JSON
+    job_config.write_disposition = 'WRITE_APPEND'
+
+    # Load the file into the BigQuery table
+    load_job = BQ.load_table_from_uri(uri, table_id, job_config=job_config)
+    load_job.result()  # Wait for the load job to complete
+    print("Data loaded successfully into table:", tableName)
+
+def create_schema_from_yaml(table_schema):
+    """
+    Converts a schema defined in YAML format into a BigQuery-compatible schema.
+
+    Args:
+        table_schema (list): The schema defined in the YAML configuration.
+
+    Returns:
+        list: A list of BigQuery SchemaField objects.
+    """
+    schema = []
+    for column in table_schema:
+        schemaField = bigquery.SchemaField(column['name'], column['type'], column['mode'])
+        schema.append(schemaField)
+
+        # Handle nested fields (records)
+        if column['type'] == 'RECORD':
+            schemaField._fields = create_schema_from_yaml(column['fields'])
+    return schema
+  
+  streaming(data)
