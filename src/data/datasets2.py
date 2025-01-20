@@ -275,22 +275,20 @@ def main():
         # Initialize with default settings
         datasets = Datasets()
         datasets.init()
-        # Example: Create and upload a sample DataFrame
-        sample_df = pd.DataFrame({
-            'name': ['John', 'Jane'],
-            'age': [30, 25]
-        })
-        
-        # Upload as CSV
-        datasets.upload_dataset(sample_df, "sample_data.csv", data_format="csv")
-        
-        # Read back the data
-        loaded_data = datasets.read_dataset("sample_data.csv", data_format="csv", as_dataframe=True)
-        
-        if loaded_data is not None:
-            print("Data loaded successfully:")
-            print(loaded_data)
-        
+
+        # Specify the file path and target filename
+        file_path = "/Users/mac/Downloads/table-1_data_new_line_delimited_json.json"  # Replace with the actual file path
+        target_filename = "line_delimited_json.json"  # Desired name in GCS
+
+        # Read the file content
+        with open(file_path, "r", encoding="utf-8") as f:
+            file_content = f.read()
+
+        # Upload the file content
+        datasets.upload_dataset(file_content, target_filename, data_format="csv")
+
+        print(f"File '{file_path}' uploaded successfully as '{target_filename}'.")
+
         # List all datasets
         print("\nAvailable datasets:")
         for dataset in datasets.list_datasets():

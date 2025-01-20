@@ -84,7 +84,29 @@ This class allows you to interact with your GCS bucket and perform dataset manag
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/service-account-file.json"
 ```
-2. **`Run the Python script:`**
-- Execute the script using the following command:
-```python3 datasets2.py```
+
+## 2. Modify the Script with Your File Path and Desired Filename
+
+1. Open the Python script (`datasets2.py`) and locate the following section inside the `main()` function:
+
+    ```python
+    file_path = "/Users/mac/Downloads/table-1_data_new_line_delimited_json.json"  # Replace with the actual file path
+    target_filename = "line_delimited_json.json"  # Desired name in GCS
+    ```
+
+2. Replace `file_path` with the path to the file you want to upload.
+
+3. Set the `target_filename` variable to the name you want the file to have once it's uploaded to Google Cloud Storage (GCS).
+
+---
+
+## 3. Run the Python Script
+
+1. After updating the script, execute it with the following command in your terminal:
+
+    ```bash
+    python3 datasets2.py
+    ```
+
+---
 
